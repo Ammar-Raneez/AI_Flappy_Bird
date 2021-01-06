@@ -3,10 +3,12 @@ import neat
 import time
 import os
 import random
+import pickle
 pygame.font.init()
 
 WIN_WIDTH = 500
 WIN_HEIGHT = 700
+GEN = 0 
 
 BIRD_IMAGES = [pygame.transform.scale2x(pygame.image.load(os.path.join("images", "bird1.png"))), pygame.transform.scale2x(pygame.image.load(os.path.join("images", "bird2.png"))), pygame.transform.scale2x(pygame.image.load(os.path.join("images", "bird3.png")))]
 PIPE_IMAGE = pygame.transform.scale2x(pygame.image.load(os.path.join("images", "pipe.png")))
@@ -148,7 +150,7 @@ class Base:
         win.blit(self.IMG, (self.x2, self.y))
 
 
-def draw_window(win, bird, pipes, base, score):
+def draw_window(win, birds, pipes, base, score, gen):
     win.blit(BG_IMAGE, (0, 0))
 
     for pipe in pipes:
@@ -157,12 +159,29 @@ def draw_window(win, bird, pipes, base, score):
     text = STAT_FONT.render("Score: " + str(score), 1, (255, 255, 255))
     win.blit(text, (WIN_WIDTH - 10 - text.get_width(), 10))
 
+    text = STAT_FONT.render("Gen: " + str(GEN), 1, (255, 255, 255))
+    win.blit(text, (10, 10))
+
     base.draw(win)
-    bird.draw(win)
+
+    for bird in birds:
+        bird.draw(win)
     pygame.display.update()
 
 def main(genomes, config):
+    global GEN
+    GEN += 1
+    nets = []
+    ge = []
     birds = []
+
+    for _, g in genomes:
+        net = neat.nn.FeedForwardNetwork.create(g, config)
+        nets.append(net)
+        birds.append(Bird(230, 350))
+        g.fitness = 0
+        ge.append(g)
+
     base = Base(630)
     pipes = [Pipe(600)]
     score = 0
@@ -175,38 +194,69 @@ def main(genomes, config):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 run = False
+                pygame.quit()
+                quit()
 
-        # bird.move()
+        pipe_ind = 0
+        if len(birds) > 0:
+            #what pipe to focus on, if there are two on screen
+            if len(pipes) > 1 and birds[0].x > pipes[0].x + pipes[0].PIPE_TOP.get_width():
+                pipe_ind = 1
+
+        else:
+            run = False
+            break
+        
+        for x, bird in enumerate(birds):
+            bird.move()
+            ge[x].fitness += 1
+
+            output = nets[x].activate((bird.y, abs(bird.y - pipes[pipe_ind].height), abs(bird.y - pipes[pipe_ind].bottom)))
+
+            if output[0] > 0.5:
+                bird.jump()
+
         rem = []
         add_pipe = False
         #add pipes over n over again
         for pipe in pipes:
-            if pipe.collide(bird):
-                pass
+            for x, bird in enumerate(birds):
+                if pipe.collide(bird):
+                    ge[x].fitness -= 1
+                    birds.pop(x)
+                    nets.pop(x)
+                    ge.pop(x)
+
+                if not pipe.passed and pipe.x < bird.x:
+                    pipe.passed = True
+                    add_pipe = True
+
             if pipe.x + pipe.PIPE_TOP.get_width() < 0:
                 rem.append(pipe)
-            if not pipe.passed and pipe.x < bird.x:
-                pipe.passed = True
-                add_pipe = True
+
             pipe.move()
         
         if add_pipe:
             score += 1
+            for g in ge:
+                g.fitness += 5
             pipes.append(Pipe(600)) 
         
         for r in rem:
             pipes.remove(r)
 
-        if bird.y + bird.img.get_height() >= 630:
-            pass
+        for x, bird in enumerate(birds):
+            if bird.y + bird.img.get_height() >= 630 or bird.y < 0:
+                birds.pop(x)
+                nets.pop(x)
+                ge.pop(x)
+
+        #Save best bird
+        # if score > 10:
+        #     break
 
         base.move()
-        draw_window(win, bird, pipes, base, score)
-
-    pygame.quit()
-    quit()
-
-main()
+        draw_window(win, birds, pipes, base, score, GEN)
 
 def run(config_path):
     #specify all the headings in the text file
@@ -223,6 +273,10 @@ def run(config_path):
     p.add_reporter(stats)
 
     winner = p.run(main ,50)
+
+    #save best bird
+    # with open ("best_bird.pickle", "wb") as f:
+    #     pickle.dump(winner, f)
 
 if __name__ == "__main__":
     local_dir = os.path.dirname(__file__)
