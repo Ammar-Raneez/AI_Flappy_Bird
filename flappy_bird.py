@@ -252,8 +252,8 @@ def main(genomes, config):
                 ge.pop(x)
 
         #Save best bird
-        # if score > 10:
-        #     break
+        if score > 10:
+            break
 
         base.move()
         draw_window(win, birds, pipes, base, score, GEN)
@@ -275,8 +275,8 @@ def run(config_path):
     winner = p.run(main ,50)
 
     #save best bird
-    # with open ("best_bird.pickle", "wb") as f:
-    #     pickle.dump(winner, f)
+    with open ("best_bird.pickle", "wb") as f:
+        pickle.dump(winner, f)
 
 if __name__ == "__main__":
     local_dir = os.path.dirname(__file__)
